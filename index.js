@@ -1,61 +1,82 @@
 const express = require('express');
-const cors = require('cors');
 const multer = require('multer');
-const { v4: uuidv4 } = require('uuid');
+const cors = require('cors');
+const fs = require('fs');
 
 const app = express();
+
+// ✅ 允许跨域（前端在 Vercel）
 app.use(cors());
+
+// ✅ 解析 JSON
 app.use(express.json());
 
-// 📁 存储文件到本地（Render会临时保存）
+// ✅ 确保 uploads 文件夹存在
+if (!fs.existsSync('uploads')) {
+  fs.mkdirSync('uploads');
+}
+
+// 📁 配置文件上传
 const storage = multer.diskStorage({
-  destination: 'uploads/',
-  filename: (req, file, cb) => {
-    cb(null, uuidv4() + '-' + file.originalname);
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/');
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + '-' + file.originalname);
   }
 });
 
 const upload = multer({ storage });
 
-// 👉 让上传文件可访问
-app.use('/uploads', express.static('uploads'));
-
+// 📦 模拟数据库（后面可以换真正数据库）
 let materials = [];
 
-// 📤 上传接口
+// 🚀 上传接口（核心）
 app.post('/upload', upload.single('file'), (req, res) => {
-  const item = {
-    id: uuidv4(),
-    title: req.body.title,
-    author: req.body.author || '匿名',
-    type: req.file.mimetype.startsWith('video') ? 'video' : 'image',
-    url: `https://shude-server-1.onrender.com/uploads/${req.file.filename}`,
-    status: 'pending',
-    createdAt: new Date()
+  console.log('📥 收到上传请求');
+
+  const file = req.file;
+  const { title, author } = req.body;
+
+  if (!file) {
+    return res.status(400).json({ error: '没有文件' });
+  }
+
+  const newItem = {
+    id: Date.now(),
+    title: title || '未命名',
+    author: author || '匿名',
+    filename: file.filename,
+    url: `https://shude-server-1.onrender.com/uploads/${file.filename}`,
+    status: 'approved', // ✅ 先直接通过（方便测试）
+    time: new Date()
   };
 
-  materials.push(item);
+  materials.push(newItem);
 
-  res.json({ success: true });
+  console.log('✅ 上传成功:', newItem);
+
+  res.json({
+    message: '上传成功',
+    data: newItem
+  });
 });
 
-// 📥 获取已审核素材
+// 📚 获取素材列表
 app.get('/materials', (req, res) => {
-  res.json(materials.filter(m => m.status === 'approved'));
+  res.json(materials);
 });
 
-// 📋 获取待审核
-app.get('/admin/materials', (req, res) => {
-  res.json(materials.filter(m => m.status === 'pending'));
+// 🖼️ 静态文件访问
+app.use('/uploads', express.static('uploads'));
+
+// 🧪 测试接口
+app.get('/', (req, res) => {
+  res.send('🚀 Server is running');
 });
 
-// ✅ 审核通过
-app.post('/admin/approve/:id', (req, res) => {
-  materials = materials.map(m =>
-    m.id === req.params.id ? { ...m, status: 'approved' } : m
-  );
-  res.json({ success: true });
-});
-
+// 🚀 启动服务
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log('Server running'));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
